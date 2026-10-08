@@ -1,0 +1,11 @@
+Options -Indexes
+DirectoryIndex index.html index.php
+
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Robots-Tag "noindex, nofollow"
+</IfModule>
+
+<FilesMatch "\.(key|log|ini)$">
+  Require all denied
+</FilesMatch>

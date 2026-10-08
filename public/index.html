@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="format-detection" content="telephone=no,email=no,address=no">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#0f1115">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta property="og:title" content="视频去水印下载">
+<meta property="og:description" content="粘贴分享链接，一键下载无水印原片">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236366f1'/%3E%3Cpath d='M24 20l20 12-20 12z' fill='%23fff'/%3E%3C/svg%3E">
+<title>视频去水印下载</title>
+<style>
+:root{
+  --bg:#0f1115; --card:#181b22; --card2:#1f232c; --line:#2a2f3a;
+  --tx:#eceef2; --tx2:#9aa2b1; --pri:#6366f1; --pri2:#818cf8;
+  --ok:#22c55e; --err:#ef4444; --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--tx);
+  font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue","Microsoft YaHei",sans-serif;
+  min-height:100vh; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  overflow-x:hidden;
+}
+body::before{
+  content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background:radial-gradient(80% 50% at 50% 0%,rgba(99,102,241,.22),transparent 70%);
+}
+.wrap{max-width:620px;margin:0 auto;padding:26px 16px 40px}
+header{text-align:center;margin-bottom:20px}
+h1{font-size:21px;margin:0 0 6px;letter-spacing:.3px}
+.sub{margin:0;color:var(--tx2);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:14px}
+textarea{
+  width:100%;min-height:88px;resize:vertical;background:var(--card2);color:var(--tx);
+  border:1px solid var(--line);border-radius:10px;padding:11px 12px;font-size:15px;
+  font-family:inherit;line-height:1.5;outline:none;
+}
+textarea:focus{border-color:var(--pri)}
+textarea::placeholder{color:#5d6678}
+.row{display:flex;gap:8px;margin-top:10px}
+.btn{
+  flex:1;border:0;border-radius:10px;padding:12px 10px;font-size:15px;font-weight:600;
+  font-family:inherit;color:var(--tx);background:var(--card2);cursor:pointer;
+  transition:opacity .15s,transform .1s;white-space:nowrap;
+}
+.btn:active{transform:scale(.98);opacity:.85}
+.btn.primary{background:linear-gradient(135deg,var(--pri),var(--pri2));flex:1.6}
+.btn.ghost{background:var(--card2);color:var(--tx2);flex:.8;font-weight:500}
+.btn[disabled]{opacity:.5;pointer-events:none}
+.btn.wide{width:100%;flex:none}
+.btn.dl{
+  flex:none;width:100%;padding:15px 10px;font-size:16.5px;
+  background:linear-gradient(135deg,#22c55e,#16a34a);
+  box-shadow:0 8px 22px -10px rgba(34,197,94,.9);
+}
+.btn.busy{opacity:.75;pointer-events:none}
+.hidden{display:none!important}
+.meta{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.avatar{width:34px;height:34px;border-radius:50%;object-fit:cover;background:var(--card2);flex:none}
+.author{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.author em{display:block;font-style:normal;color:var(--tx2);font-weight:400;font-size:11.5px;margin-top:1px}
+.title{font-size:14.5px;line-height:1.55;margin:0 0 11px;word-break:break-word;max-height:4.7em;overflow:hidden}
+.player{width:100%;max-height:62vh;border-radius:11px;background:#000;display:block}
+.hint{
+  display:flex;align-items:flex-start;gap:7px;margin-top:10px;padding:9px 11px;
+  background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.32);
+  border-radius:9px;font-size:12.5px;color:#c3c9f7;line-height:1.5;
+}
+.acts{display:flex;gap:8px;margin-top:10px}
+.acts .btn{font-size:14px;padding:11px 8px}
+.err{
+  display:flex;gap:9px;align-items:flex-start;padding:11px 12px;border-radius:10px;
+  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.32);font-size:13.5px;color:#fca5a5
+}
+.spin{
+  width:17px;height:17px;border:2px solid rgba(255,255,255,.28);border-top-color:#fff;
+  border-radius:50%;animation:sp .7s linear infinite;display:inline-block;vertical-align:-3px
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+h2.sec{font-size:12.5px;color:var(--tx2);margin:0 0 10px;font-weight:600;letter-spacing:.5px}
+.hitem{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line);cursor:pointer}
+.hitem:first-of-type{border-top:0}
+.hitem img{width:52px;height:52px;border-radius:8px;object-fit:cover;background:var(--card2);flex:none}
+.hitem div{min-width:0}
+.hitem p{margin:0;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hitem span{font-size:11.5px;color:var(--tx2)}
+footer{text-align:center;color:#5d6678;font-size:12px;line-height:1.8;margin-top:22px}
+footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
+.gallery{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:4px}
+.gitem{position:relative;border-radius:10px;overflow:hidden;background:var(--card2)}
+.gitem img{width:100%;display:block;aspect-ratio:3/4;object-fit:cover}
+.gbtn{
+  position:absolute;right:7px;bottom:7px;border:0;border-radius:8px;padding:6px 11px;
+  font-size:12.5px;font-weight:600;font-family:inherit;color:#fff;
+  background:rgba(34,197,94,.92);cursor:pointer;
+}
+.gbtn:active{opacity:.8}.toast{
+  position:fixed;left:50%;bottom:13%;transform:translate(-50%,14px);z-index:99;
+  background:rgba(30,34,42,.97);border:1px solid var(--line);color:var(--tx);
+  padding:10px 17px;border-radius:22px;font-size:13.5px;max-width:82vw;text-align:center;
+  opacity:0;pointer-events:none;transition:opacity .22s,transform .22s;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>视频去水印下载</h1>
+    <p class="sub">粘贴分享链接，一键下载无水印原片</p>
+  </header>
+
+  <section class="card">
+    <textarea id="input" placeholder="把视频的分享链接粘贴到这里&#10;例如：https://v.douyin.com/xxxxxxx/&#10;可以直接整段复制，无需手动删文案"></textarea>
+    <div class="row">
+      <button class="btn ghost" id="pasteBtn">粘贴</button>
+      <button class="btn ghost" id="clearBtn">清空</button>
+      <button class="btn primary" id="parseBtn">开始解析</button>
+    </div>
+  </section>
+
+  <section id="result"></section>
+  <section class="card hidden" id="historyCard">
+    <h2 class="sec">最近解析</h2>
+    <div id="historyList"></div>
+  </section>
+
+  <footer>
+    <div>支持 抖音 / 快手 / 微博 / 西瓜 / 皮皮虾 / 微视 / 最右 / 虎牙 / 美拍 等 20+ 平台</div>
+    <div class="tiny">仅供个人学习与备份使用，请尊重原作者版权</div>
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = 'api.php';
+  var isWX = /MicroMessenger/i.test(navigator.userAgent);
+  var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  var canPickFile = typeof window.showSaveFilePicker === 'function';
+
+  var input = document.getElementById('input');
+  var parseBtn = document.getElementById('parseBtn');
+  var pasteBtn = document.getElementById('pasteBtn');
+  var clearBtn = document.getElementById('clearBtn');
+  var resultBox = document.getElementById('result');
+  var historyCard = document.getElementById('historyCard');
+  var historyList = document.getElementById('historyList');
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+
+  function toast(msg, ms) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('on'); }, ms || 2400);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+
+  function extractUrl(text) {
+    var m = String(text).match(/https?:\/\/[^\s<>"'，。、；）)】\]]+/i);
+    return m ? m[0].replace(/[.,;:!?]+$/, '') : '';
+  }
+
+  function copyText(text, okMsg) {
+    var done = okMsg || '已复制到剪贴板';
+    function legacy() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-9999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      toast(ok ? done : '复制失败，请长按文字手动复制');
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast(done);
+      }, legacy);
+    } else {
+      legacy();
+    }
+  }
+
+  /* 触发浏览器原生下载 */
+  function anchorDownload(url, filename) {
+    var a = document.createElement('a');
+    a.href = url;
+    a.rel = 'noopener';
+    if (filename) { a.download = filename; }
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { document.body.removeChild(a); }, 1000);
+  }
+
+  /* 桌面端：弹出系统「另存为」，可自选文件夹；其余环境走浏览器下载 */
+  function saveFile(url, filename, btn) {
+    if (canPickFile) {
+      btn.classList.add('busy');
+      // 必须先弹选择框（保留用户手势），再取文件
+      window.showSaveFilePicker({ suggestedName: filename })
+        .then(function (handle) {
+          return fetch(url, { credentials: 'omit' }).then(function (res) {
+            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            return res.blob();
+          }).then(function (blob) {
+            return handle.createWritable().then(function (w) {
+              return w.write(blob).then(function () { return w.close(); });
+            });
+          });
+        })
+        .then(function () {
+          toast('已保存到所选位置');
+        })
+        .catch(function (e) {
+          btn.classList.remove('busy');
+          if (e && (e.name === 'AbortError' || e.name === 'NotAllowedError')) { return; }
+          anchorDownload(url, filename);
+        })
+        .then(function () {
+          btn.classList.remove('busy');
+        });
+      return;
+    }
+    anchorDownload(url, filename);
+    if (isWX) {
+      toast('已开始下载，按提示保存');
+    } else if (!isIOS) {
+      toast('已开始下载');
+    }
+  }
+
+  function setLoading(on) {
+    if (on) {
+      parseBtn.disabled = true;
+      parseBtn.innerHTML = '<span class="spin"></span> 解析中';
+    } else {
+      parseBtn.disabled = false;
+      parseBtn.textContent = '开始解析';
+    }
+  }
+
+  function showError(msg) {
+    resultBox.innerHTML =
+      '<section class="card"><div class="err"><span>⚠️</span><span>' + esc(msg) + '</span></div>' +
+      '<div class="acts"><button class="btn wide" id="retryBtn">重新解析</button></div></section>';
+    var r = document.getElementById('retryBtn');
+    if (r) { r.addEventListener('click', doParse); }
+  }
+
+  function render(data, sourceUrl) {
+    var rawTitle = String(data.title == null ? '' : data.title).trim();
+    var title  = rawTitle || '未命名作品';
+    var author = data.author || '';
+    var avatar = data.avatar || '';
+    var cover  = data.cover || '';
+    var video  = data.url || '';
+    var fallbacks = data.url_fallback || [];
+    var images = data.images || [];
+    var dl     = data.download || '';
+    var dlImgs = data.download_images || [];
+    var dlCov  = data.download_cover || '';
+    var fname  = data.filename || 'video.mp4';
+    var fnameC = fname.replace(/\.[^.]+$/, '') + '.jpg';
+    var baseName = fname.replace(/\.[^.]+$/, '');
+    var isAlbum = images.length > 0;
+
+    var html = '<section class="card">';
+
+    if (author || avatar) {
+      html += '<div class="meta">' +
+        (avatar ? '<img class="avatar" src="' + esc(avatar) + '" referrerpolicy="no-referrer" alt="">' : '') +
+        '<div class="author"><span>' + esc(author) + '</span>' +
+        (data.time ? '<em>' + esc(formatTime(data.time)) + (data.like ? ' · ' + esc(data.like) + ' 赞' : '') + '</em>' : '') +
+        '</div></div>';
+    }
+
+    html += '<p class="title">' + esc(title) + '</p>';
+
+    if (isAlbum) {
+      html += '<div class="gallery">';
+      for (var i = 0; i < images.length; i++) {
+        html += '<div class="gitem">' +
+          '<img src="' + esc(images[i]) + '" referrerpolicy="no-referrer" alt="" loading="lazy">' +
+          '<button class="gbtn" data-i="' + i + '">保存</button></div>';
+      }
+      html += '</div>';
+      html += '<div class="acts"><button class="btn dl" id="dlAllBtn">⬇️ 下载全部 ' + images.length + ' 张图</button></div>';
+      if (rawTitle) {
+        html += '<div class="acts"><button class="btn" id="copyTextBtn">复制文案</button></div>';
+      }
+    } else {
+      html += '<video class="player" id="player" src="' + esc(video) + '" controls playsinline webkit-playsinline preload="metadata"' +
+        (cover ? ' poster="' + esc(cover) + '"' : '') + '></video>';
+      html += '<div class="acts"><button class="btn dl" id="dlBtn">⬇️ 下载视频</button></div>';
+      html += '<div class="acts">' +
+        '<button class="btn" id="openBtn">在线预览</button>' +
+        (rawTitle ? '<button class="btn" id="copyTextBtn">复制文案</button>' : '') +
+        '<button class="btn" id="copyBtn">复制直链</button>' +
+        '</div>';
+    }
+
+    if (dlCov) {
+      html += '<div class="acts"><button class="btn ghost wide" id="coverBtn">下载封面</button></div>';
+    }
+
+    if (isWX) {
+      html += '<div class="hint"><span>💡</span><span>' +
+        (isIOS
+          ? '点了没反应？点右上角「…」→ 在浏览器中打开，再点下载就能存进相册。'
+          : '下载完成后，可在微信「文件」或手机相册里找到。') +
+        '</span></div>';
+    }
+
+    html += '</section>';
+    resultBox.innerHTML = html;
+
+    /* 播放失败时自动切换到下一个可用清晰度 */
+    var player = document.getElementById('player');
+    if (player && fallbacks.length) {
+      var fi = 0;
+      player.addEventListener('error', function () {
+        if (fi < fallbacks.length) { player.src = fallbacks[fi++]; }
+      });
+    }
+
+    if (isAlbum) {
+      Array.prototype.forEach.call(resultBox.querySelectorAll('.gbtn'), function (b) {
+        b.addEventListener('click', function () {
+          var idx = parseInt(b.getAttribute('data-i'), 10);
+          saveFile(dlImgs[idx] || images[idx], baseName + '-' + (idx + 1) + '.jpg', b);
+        });
+      });
+      var all = document.getElementById('dlAllBtn');
+      if (all) {
+        all.addEventListener('click', function () {
+          for (var n = 0; n < dlImgs.length; n++) {
+            (function (k) {
+              setTimeout(function () { anchorDownload(dlImgs[k]); }, k * 700);
+            })(n);
+          }
+          toast('已开始保存 ' + dlImgs.length + ' 张图');
+        });
+      }
+    } else {
+      document.getElementById('dlBtn').addEventListener('click', function () {
+        if (!dl) { window.open(video, '_blank'); return; }
+        saveFile(dl, fname, this);
+      });
+      document.getElementById('openBtn').addEventListener('click', function () {
+        window.open(video, '_blank');
+      });
+      document.getElementById('copyBtn').addEventListener('click', function () {
+        copyText(video);
+      });
+    }
+
+    var ctb = document.getElementById('copyTextBtn');
+    if (ctb) {
+      ctb.addEventListener('click', function () {
+        copyText(rawTitle, '文案已复制，去粘贴吧');
+      });
+    }
+
+    var cb = document.getElementById('coverBtn');
+    if (cb) {
+      cb.addEventListener('click', function () { saveFile(dlCov, fnameC, this); });
+    }
+
+    saveHistory({ title: title, cover: cover, video: video, author: author, src: sourceUrl });
+  }
+  function formatTime(t) {
+    var n = parseInt(t, 10);
+    if (!n || isNaN(n)) { return String(t); }
+    if (n < 1e12) { n = n * 1000; }
+    var d = new Date(n);
+    if (isNaN(d.getTime())) { return String(t); }
+    function p(x) { return x < 10 ? '0' + x : '' + x; }
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+
+  function doParse() {
+    var raw = input.value.trim();
+    if (!raw) { toast('请先粘贴视频分享链接'); input.focus(); return; }
+
+    var url = extractUrl(raw);
+    if (!url) { toast('没找到链接，请确认已完整粘贴'); return; }
+
+    setLoading(true);
+    resultBox.innerHTML = '';
+
+    var ctrl = ('AbortController' in window) ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, 40000) : null;
+
+    var body = new URLSearchParams();
+    body.append('url', url);
+
+    fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: body.toString(),
+      signal: ctrl ? ctrl.signal : undefined
+    }).then(function (res) {
+      if (!res.ok) { throw new Error('HTTP ' + res.status); }
+      return res.json();
+    }).then(function (json) {
+      if (timer) { clearTimeout(timer); }
+      if (json && json.code === 200 && json.data && json.data.url) {
+        render(json.data, url);
+        toast('解析成功，点「下载视频」保存');
+      } else {
+        showError((json && json.msg) ? json.msg : '解析失败，请稍后重试');
+      }
+    }).catch(function (e) {
+      if (timer) { clearTimeout(timer); }
+      showError(e && e.name === 'AbortError' ? '解析超时，请重试或换个链接' : '网络异常，请检查网络后重试');
+    }).then(function () {
+      setLoading(false);
+    });
+  }
+
+  /* ---------- 本地历史 ---------- */
+  var HKEY = 'vs_history_v1';
+
+  function readHistory() {
+    try { return JSON.parse(localStorage.getItem(HKEY) || '[]'); } catch (e) { return []; }
+  }
+
+  function saveHistory(item) {
+    var list = readHistory().filter(function (x) { return x.video !== item.video; });
+    list.unshift(item);
+    list = list.slice(0, 8);
+    try { localStorage.setItem(HKEY, JSON.stringify(list)); } catch (e) {}
+    renderHistory();
+  }
+
+  function renderHistory() {
+    var list = readHistory();
+    if (!list.length) { historyCard.classList.add('hidden'); return; }
+    historyCard.classList.remove('hidden');
+    historyList.innerHTML = list.map(function (it, i) {
+      return '<div class="hitem" data-i="' + i + '">' +
+        (it.cover ? '<img src="' + esc(it.cover) + '" referrerpolicy="no-referrer" alt="">' : '<img alt="">') +
+        '<div><p>' + esc(it.title) + '</p><span>' + esc(it.author || '') + '</span></div></div>';
+    }).join('');
+    Array.prototype.forEach.call(historyList.querySelectorAll('.hitem'), function (el) {
+      el.addEventListener('click', function () {
+        var it = list[parseInt(el.getAttribute('data-i'), 10)];
+        if (it) { reparse(it); }
+      });
+    });
+  }
+
+  /* 历史记录里只存了原始地址，重新解析以获得新的下载签名 */
+  function reparse(it) {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (it.src) {
+      input.value = it.src;
+      doParse();
+    } else {
+      toast('记录已失效，请重新粘贴链接');
+    }
+  }
+
+  /* ---------- 交互绑定 ---------- */
+  parseBtn.addEventListener('click', doParse);
+
+  clearBtn.addEventListener('click', function () {
+    input.value = '';
+    resultBox.innerHTML = '';
+    input.focus();
+  });
+
+  pasteBtn.addEventListener('click', function () {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      navigator.clipboard.readText().then(function (t) {
+        if (t) { input.value = t.trim(); parseBtn.focus(); }
+        else { toast('剪贴板是空的'); }
+      }, function () {
+        toast('无法读取剪贴板，请长按输入框粘贴');
+      });
+    } else {
+      toast('请长按输入框粘贴');
+    }
+  });
+
+  input.addEventListener('paste', function () {
+    setTimeout(function () {
+      if (extractUrl(input.value)) { doParse(); }
+    }, 60);
+  });
+
+  renderHistory();
+})();
+</script>
+</body>
+</html>
