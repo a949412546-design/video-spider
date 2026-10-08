@@ -43,21 +43,30 @@ class XiaohongshuSpider
         }
 
         $hasToken = (strpos($real, 'xsec_token=') !== false);
-        $mobile = (strpos($real, 'app_platform=android') !== false
-                || strpos($real, 'xhslink.com') !== false
-                || strpos($url, 'xhslink.com') !== false);
+        $mobile = (strpos($real, 'app_platform=') !== false
+                || strpos($real, 'xhslink.') !== false
+                || strpos($url, 'xhslink.') !== false);
 
         $order = $mobile ? array('mobile', 'pc') : array('pc', 'mobile');
         $note = null;
         $redirectedToLogin = false;
 
         foreach ($order as $mode) {
-            $html = $this->fetch($real, $mode);
+            $res = $this->fetch($real, $mode);
+            $html = $res['body'];
             if ($html === '') {
                 continue;
             }
-            if (strpos($html, 'class="login-container"') !== false
-                || preg_match('#<title>\s*(登录|小红书)\s*</title>#u', $html)) {
+            /*
+             * 判断是否被风控跳到登录页。
+             * 注意不能用 <title> 判断——正常笔记页的标题也是「小红书」，
+             * 之前就是这里把成功的请求误判成了风控。
+             */
+            $looksLogin = (strpos($res['url'], '/login') !== false)
+                || (strpos($html, 'class="login-container"') !== false);
+            $hasNote = (strpos($html, 'noteData') !== false)
+                || (strpos($html, 'noteDetailMap') !== false);
+            if ($looksLogin && !$hasNote) {
                 $redirectedToLogin = true;
                 continue;
             }
@@ -84,12 +93,24 @@ class XiaohongshuSpider
 
     private function resolveUrl($url)
     {
-        $host = parse_url($url, PHP_URL_HOST);
-        if ($host && (substr($host, -15) === 'xiaohongshu.com')) {
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        if ($host !== '' && substr($host, -15) === 'xiaohongshu.com') {
             return $url;
         }
 
-        /* 短链：跟随 302，但要保住 xsec_token 等参数 */
+        /* 短链：跟随跳转，并且必须保住 xsec_token 等参数 */
+        $loc = $this->headLocation($url);
+        if ($loc !== '') {
+            return $loc;
+        }
+
+        /* xhslink.cn 不支持 HEAD（会返回 404），只能退回 GET 拿最终地址 */
+        return $this->finalUrl($url);
+    }
+
+    /** 用 HEAD 取 Location，省流量 */
+    private function headLocation($url)
+    {
         $ch = curl_init($url);
         curl_setopt_array($ch, array(
             CURLOPT_NOBODY         => true,
@@ -116,9 +137,30 @@ class XiaohongshuSpider
                 return trim(end($m[1]));
             }
         }
-        return $url;
+        return '';
     }
 
+    /** 用 GET 跟随跳转，取最终地址 */
+    private function finalUrl($url)
+    {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, array(
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS      => 5,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_USERAGENT      => $this->mobileUa,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING       => 'gzip,deflate',
+        ));
+        curl_exec($ch);
+        $final = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        curl_close($ch);
+
+        return (is_string($final) && $final !== '') ? $final : '';
+    }
     private function fetch($url, $mode)
     {
         $ua = ($mode === 'mobile') ? $this->mobileUa : $this->pcUa;
@@ -144,12 +186,13 @@ class XiaohongshuSpider
         curl_setopt_array($ch, $opts);
         $body = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $final = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
 
         if ($code !== 200 || !is_string($body) || strlen($body) < 500) {
-            return '';
+            return array('body' => '', 'url' => $final);
         }
-        return $body;
+        return array('body' => $body, 'url' => $final);
     }
 
     private function extractId($url)
@@ -234,7 +277,7 @@ class XiaohongshuSpider
             'author' => $this->pickAuthor($note),
             'avatar' => $this->pickStr($note, array('user', 'avatar')),
             'title'  => $this->pickTitle($note),
-            'cover'  => $this->cleanImage($this->pickCover($note)),
+            'cover'  => $this->cleanImage($this->pickCover($note), $this->coverFileId($note)),
             'time'   => $this->pickStr($note, array('time')),
             'like'   => $this->pickLike($note),
         );
@@ -256,7 +299,8 @@ class XiaohongshuSpider
                     $u = $img['infoList'][0]['url'];
                 }
                 if ($u !== '') {
-                    $images[] = $this->cleanImage($u);
+                    $fid = isset($img['fileId']) ? (string) $img['fileId'] : '';
+                    $images[] = $this->cleanImage($u, $fid);
                 }
             }
         }
@@ -382,17 +426,19 @@ class XiaohongshuSpider
     }
 
     /**
-     * 图片去水印：去掉 !h5_1080jpg 这类 CDN 样式后缀，
-     * 拿到的是原始尺寸的图，不是压缩或带水印的版本。
+     * 取原图地址。
+     *
+     * 用 fileId 拼 sns-img-qc.xhscdn.com/{fileId} 且不带任何参数，拿到的是作者上传的原图，
+     * 实测 1644x2192、391KB；而页面里的 !h5_1080jpg 版本只有 1080x1440、165KB。
+     * 注意：不能把 ! 后缀剥掉，剥掉后 CDN 会直接返回 403。
      */
-    private function cleanImage($url)
+    private function cleanImage($url, $fileId = '')
     {
-        $url = $this->ensureHttps(trim((string) $url));
-        if ($url === '') {
-            return '';
+        $fileId = trim((string) $fileId);
+        if ($fileId !== '') {
+            return 'https://sns-img-qc.xhscdn.com/' . ltrim($fileId, '/');
         }
-        $url = preg_replace('#![^!]*$#', '', $url);
-        return $url;
+        return $this->ensureHttps(trim((string) $url));
     }
 
     private function ensureHttps($url)
@@ -422,6 +468,18 @@ class XiaohongshuSpider
             return $title . "\n" . $desc;
         }
         return $title !== '' ? $title : $desc;
+    }
+
+    /** 封面对象里的 fileId，没有就退回第一张图的 */
+    private function coverFileId($note)
+    {
+        if (!empty($note['cover']['fileId'])) {
+            return (string) $note['cover']['fileId'];
+        }
+        if (!empty($note['imageList'][0]['fileId'])) {
+            return (string) $note['imageList'][0]['fileId'];
+        }
+        return '';
     }
 
     private function pickCover($note)
