@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: video-spider
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api.php?ping=1
+    autoDeploy: true

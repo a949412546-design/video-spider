@@ -1,0 +1,7 @@
+services:
+  app:
+    build: .
+    image: video-spider
+    ports:
+      - "8080:80"
+    restart: unless-stopped
