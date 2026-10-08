@@ -230,7 +230,13 @@ if (!empty($result['data']['images']) && is_array($result['data']['images'])) {
         $imgDownloads[] = vs_download_url($img, $base . '-' . ($i + 1) . '.jpg');
     }
     $result['data']['download_images'] = $imgDownloads;
-    $result['data']['filename'] = $base . '.jpg';
+    /*
+     * 只有纯图集才把文件名改成 jpg。
+     * 视频笔记的 imageList 里只有一张封面，不能让它把 mp4 的文件名覆盖掉。
+     */
+    if (empty($result['data']['url'])) {
+        $result['data']['filename'] = $base . '.jpg';
+    }
 }
 
 if (!empty($result['data']['cover'])) {

@@ -388,6 +388,8 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
             Array.prototype.forEach.call(resultBox.querySelectorAll('.qpill'), function (o) {
               o.classList.toggle('on', o === p);
             });
+            /* 预览也跟着切，避免「选的」和「看的」不一致 */
+            if (player && quals[curQ].url) { player.src = quals[curQ].url; }
           });
         });
       }
