@@ -204,6 +204,25 @@ if (!empty($result['data']['url'])) {
     $result['data']['download'] = vs_download_url($result['data']['url'], $base . '.mp4');
 }
 
+/* 多清晰度：每个档位一个签名下载地址 */
+if (!empty($result['data']['qualities']) && is_array($result['data']['qualities'])) {
+    $qs = array();
+    foreach ($result['data']['qualities'] as $q) {
+        if (empty($q['url'])) {
+            continue;
+        }
+        $qs[] = array(
+            'label'    => isset($q['label']) ? $q['label'] : '',
+            'size'     => isset($q['size']) ? (int) $q['size'] : 0,
+            'url'      => $q['url'],
+            'download' => vs_download_url($q['url'], $base . '.mp4'),
+        );
+    }
+    if ($qs) {
+        $result['data']['quality_downloads'] = $qs;
+    }
+}
+
 /* 图集作品：每张图一个下载地址 */
 if (!empty($result['data']['images']) && is_array($result['data']['images'])) {
     $imgDownloads = array();

@@ -99,7 +99,14 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
   font-size:12.5px;font-weight:600;font-family:inherit;color:#fff;
   background:rgba(34,197,94,.92);cursor:pointer;
 }
-.gbtn:active{opacity:.8}.toast{
+.gbtn:active{opacity:.8}.qrow{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.qpill{
+  flex:1;min-width:88px;border:1px solid var(--line);border-radius:9px;padding:9px 8px;
+  background:var(--card2);color:var(--tx2);font-size:13px;font-weight:600;font-family:inherit;
+  cursor:pointer;line-height:1.35;
+}
+.qpill.on{background:rgba(99,102,241,.18);border-color:var(--pri);color:#fff}
+.qpill:active{opacity:.8}.toast{
   position:fixed;left:50%;bottom:13%;transform:translate(-50%,14px);z-index:99;
   background:rgba(30,34,42,.97);border:1px solid var(--line);color:var(--tx);
   padding:10px 17px;border-radius:22px;font-size:13.5px;max-width:82vw;text-align:center;
@@ -277,6 +284,7 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
     var dl     = data.download || '';
     var dlImgs = data.download_images || [];
     var dlCov  = data.download_cover || '';
+    var quals  = data.quality_downloads || [];
     var fname  = data.filename || 'video.mp4';
     var fnameC = fname.replace(/\.[^.]+$/, '') + '.jpg';
     var baseName = fname.replace(/\.[^.]+$/, '');
@@ -313,6 +321,14 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
     } else {
       html += '<video class="player" id="player" src="' + esc(video) + '" controls playsinline webkit-playsinline preload="metadata"' +
         (cover ? ' poster="' + esc(cover) + '"' : '') + '></video>';
+      if (quals.length > 1) {
+        html += '<div class="qrow">';
+        for (var q = 0; q < quals.length; q++) {
+          html += '<button class="qpill' + (q === 0 ? ' on' : '') + '" data-q="' + q + '">' +
+            esc(quals[q].label) + (quals[q].size > 0 ? '<br>' + fmtSize(quals[q].size) : '') + '</button>';
+        }
+        html += '</div>';
+      }
       html += '<div class="acts"><button class="btn dl" id="dlBtn">⬇️ 下载视频</button></div>';
       html += '<div class="acts">' +
         '<button class="btn" id="openBtn">在线预览</button>' +
@@ -364,15 +380,30 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
         });
       }
     } else {
+      var curQ = 0;
+      if (quals.length > 1) {
+        Array.prototype.forEach.call(resultBox.querySelectorAll('.qpill'), function (p) {
+          p.addEventListener('click', function () {
+            curQ = parseInt(p.getAttribute('data-q'), 10) || 0;
+            Array.prototype.forEach.call(resultBox.querySelectorAll('.qpill'), function (o) {
+              o.classList.toggle('on', o === p);
+            });
+          });
+        });
+      }
+      var pickDl = function () { return quals.length ? (quals[curQ].download || dl) : dl; };
+      var pickRaw = function () { return quals.length ? (quals[curQ].url || video) : video; };
+
       document.getElementById('dlBtn').addEventListener('click', function () {
-        if (!dl) { window.open(video, '_blank'); return; }
-        saveFile(dl, fname, this);
+        var target = pickDl();
+        if (!target) { window.open(pickRaw(), '_blank'); return; }
+        saveFile(target, fname, this);
       });
       document.getElementById('openBtn').addEventListener('click', function () {
-        window.open(video, '_blank');
+        window.open(pickRaw(), '_blank');
       });
       document.getElementById('copyBtn').addEventListener('click', function () {
-        copyText(video);
+        copyText(pickRaw());
       });
     }
 
@@ -390,6 +421,16 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
 
     saveHistory({ title: title, cover: cover, video: video, author: author, src: sourceUrl });
   }
+  function fmtSize(bytes) {
+    var n = Number(bytes);
+    if (!n || isNaN(n) || n <= 0) { return ''; }
+    if (n >= 1048576) {
+      var mb = n / 1048576;
+      return (mb >= 10 ? Math.round(mb) : mb.toFixed(1)) + ' MB';
+    }
+    return Math.round(n / 1024) + ' KB';
+  }
+
   function formatTime(t) {
     var n = parseInt(t, 10);
     if (!n || isNaN(n)) { return String(t); }
