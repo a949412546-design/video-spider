@@ -280,7 +280,11 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
     var fname  = data.filename || 'video.mp4';
     var fnameC = fname.replace(/\.[^.]+$/, '') + '.jpg';
     var baseName = fname.replace(/\.[^.]+$/, '');
-    var isAlbum = images.length > 0;
+    /*
+     * 视频笔记的 imageList 里只有一张封面图，不能因为「有图」就当成图集，
+     * 否则视频会被忽略、页面上只出现封面。有视频就优先按视频渲染。
+     */
+    var isAlbum = !video && images.length > 0;
 
     var html = '<section class="card">';
 
