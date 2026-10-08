@@ -105,6 +105,7 @@ $routes = array(
     array('douyin', 'douyin', 'url'),
     array('xiaohongshu.com', 'xiaohongshu', 'url'),
     array('xhslink.com', 'xiaohongshu', 'url'),
+    array('xhslink.cn', 'xiaohongshu', 'url'),
     array('huoshan', 'huoshan', 'url'),
     array('h5.weishi', 'weishi', 'url'),
     array('isee.weishi', 'weishi', 'id'),
