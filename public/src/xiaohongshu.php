@@ -404,7 +404,7 @@ class XiaohongshuSpider
             }
         }
 
-        /* 去重，保持原画在前的顺序 */
+        /* 去重 */
         $seen = array();
         $uniq = array();
         foreach ($out as $q) {
@@ -414,7 +414,28 @@ class XiaohongshuSpider
             $seen[$q['url']] = 1;
             $uniq[] = $q;
         }
-        return $uniq;
+
+        /*
+         * 排序：体积友好的网页流排前面作为默认档，原画放最后。
+         * 原画动辄上百 MB（4K 实测 126MB），默认给用户下这个不友好；
+         * 720P 这类网页流通常只有十几 MB，画质也够用，想追求极致再手动选原画。
+         */
+        $light = array();
+        $origin = null;
+        foreach ($uniq as $q) {
+            if ($q['label'] === '原画') {
+                $origin = $q;
+            } else {
+                $light[] = $q;
+            }
+        }
+        usort($light, function ($a, $b) {
+            return $b['size'] - $a['size'];
+        });
+        if ($origin !== null) {
+            $light[] = $origin;
+        }
+        return $light;
     }
     /** 在 mediaV2 这类嵌套结构里递归找投屏流地址 */
     private function searchStream($arr, $depth = 0)
