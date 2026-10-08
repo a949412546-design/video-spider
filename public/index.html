@@ -422,9 +422,12 @@ footer .tiny{font-size:11px;color:#464e5e;margin-top:4px}
       return res.json();
     }).then(function (json) {
       if (timer) { clearTimeout(timer); }
-      if (json && json.code === 200 && json.data && json.data.url) {
-        render(json.data, url);
-        toast('解析成功，点「下载视频」保存');
+      /* 图文笔记只有 images 没有 url，这里两种都要认 */
+      var d = (json && json.data) ? json.data : null;
+      var hasMedia = !!(d && (d.url || (d.images && d.images.length)));
+      if (json && json.code === 200 && hasMedia) {
+        render(d, url);
+        toast('解析成功，点下载保存');
       } else {
         showError((json && json.msg) ? json.msg : '解析失败，请稍后重试');
       }
