@@ -108,6 +108,12 @@ textarea:focus{
 .btn.dl:active{box-shadow:0 8px 18px -14px rgba(34,197,94,.9)}
 .btn.busy{opacity:.75;pointer-events:none}
 
+.paste-tip{
+  margin:10px 2px 0;font-size:12px;line-height:1.55;color:var(--tx3);
+  display:flex;align-items:flex-start;gap:6px;
+}
+.paste-tip::before{content:"💡";flex:none}
+
 /* ---------- 结果卡片 ---------- */
 .meta{display:flex;align-items:center;gap:11px;margin-bottom:13px}
 .avatar{
@@ -255,6 +261,7 @@ footer .sep{color:#333b47;margin:0 5px}
       <button class="btn ghost" id="clearBtn">清空</button>
       <button class="btn primary" id="parseBtn">开始解析</button>
     </div>
+    <p class="paste-tip hidden" id="pasteTip">系统会问一次「允许粘贴」，点它就直接出结果</p>
   </section>
 
   <section id="result"></section>
@@ -632,18 +639,44 @@ footer .sep{color:#333b47;margin:0 5px}
     input.focus();
   });
 
+  /*
+   * 粘贴按钮。
+   *
+   * iOS 从 16 起要求网页读剪贴板必须再经用户确认一次（系统弹「允许粘贴」），
+   * 这是系统安全策略，网页侧绕不过去。能优化的是：把焦点先放进输入框、
+   * 把话说清楚、读到内容后直接解析，让整条链路尽量少点几下。
+   */
   pasteBtn.addEventListener('click', function () {
-    if (navigator.clipboard && navigator.clipboard.readText) {
-      navigator.clipboard.readText().then(function (t) {
-        if (t) { input.value = t.trim(); parseBtn.focus(); }
-        else { toast('剪贴板是空的'); }
-      }, function () {
-        toast('无法读取剪贴板，请长按输入框粘贴');
-      });
-    } else {
-      toast('请长按输入框粘贴');
+    try { input.focus(); } catch (e) {}
+
+    if (!(navigator.clipboard && navigator.clipboard.readText)) {
+      toast('当前浏览器不支持自动读取，请长按输入框选择「粘贴」');
+      return;
     }
+
+    navigator.clipboard.readText().then(function (text) {
+      var t = String(text == null ? '' : text).trim();
+      if (!t) {
+        toast('剪贴板里没有内容，先复制链接再点粘贴');
+        return;
+      }
+      input.value = t;
+      input.setSelectionRange(t.length, t.length);
+      if (extractUrl(t)) {
+        /* 和手动粘贴保持一致：识别到链接就直接解析，省掉一次点击 */
+        doParse();
+      } else {
+        toast('已粘贴，没识别到链接，请检查内容');
+      }
+    }, function () {
+      toast(isIOS ? '在系统提示里点「允许粘贴」即可' : '读取被拒绝，请长按输入框选择「粘贴」');
+    });
   });
+
+  /* iOS 才需要提示系统确认这一步，其他平台不会弹 */
+  if (isIOS) {
+    document.getElementById('pasteTip').classList.remove('hidden');
+  }
 
   input.addEventListener('paste', function () {
     setTimeout(function () {
