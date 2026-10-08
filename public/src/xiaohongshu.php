@@ -311,10 +311,13 @@ class XiaohongshuSpider
             }
         }
 
-        /* 视频 */
-        $video = $this->pickVideo($note);
-        if ($video !== '') {
-            $data['url'] = $this->ensureHttps($video);
+        /* 视频：取全部可选清晰度，第一个作为默认 */
+        $qualities = $this->collectQualities($note);
+        if ($qualities) {
+            $data['url'] = $qualities[0]['url'];
+            if (count($qualities) > 1) {
+                $data['qualities'] = $qualities;
+            }
         }
 
         if (empty($data['url']) && empty($data['images'])) {
@@ -330,30 +333,28 @@ class XiaohongshuSpider
      * 2. mediaV2 里的投屏流
      * 3. 码率流列表（排除 259 / 309，那是小程序带水印的）
      */
-    private function pickVideo($note)
+    /**
+     * 收集可选清晰度。
+     *
+     * 原画是作者上传的原始文件，画质最好但体积可能很大（实测有 126MB 的），
+     * 所以同时把网页播放流也带上，让用户自己选。
+     * streamType 为 259 / 309 的是小程序带水印流，必须排除。
+     */
+    private function collectQualities($note)
     {
-        if (empty($note['video']) || !is_array($note['video'])) {
-            return '';
+        $out = array();
+        $video = isset($note['video']) && is_array($note['video']) ? $note['video'] : null;
+        if (!$video) {
+            return $out;
         }
-        $video = $note['video'];
 
         $key = $this->pickStr($video, array('consumer', 'originVideoKey'));
-        if (is_string($key) && $key !== '') {
-            return 'https://sns-video-bd.xhscdn.com/' . ltrim($key, '/');
-        }
-
-        if (!empty($video['mediaV2']) && is_string($video['mediaV2'])) {
-            $mv2 = json_decode($video['mediaV2'], true);
-            if (!is_array($mv2)) {
-                $fixed = preg_replace('#\bundefined\b#', 'null', $video['mediaV2']);
-                $mv2 = json_decode($fixed, true);
-            }
-            if (is_array($mv2)) {
-                $found = $this->searchStream($mv2);
-                if ($found !== '') {
-                    return $found;
-                }
-            }
+        if ($key !== '') {
+            $out[] = array(
+                'label' => '原画',
+                'url'   => 'https://sns-video-bd.xhscdn.com/' . ltrim($key, '/'),
+                'size'  => 0,
+            );
         }
 
         $streams = $this->pick($video, array('media', 'stream'));
@@ -363,29 +364,58 @@ class XiaohongshuSpider
                     continue;
                 }
                 foreach ($streams[$codec] as $s) {
+                    if (!is_array($s)) {
+                        continue;
+                    }
                     $type = isset($s['streamType']) ? (int) $s['streamType'] : 0;
                     if ($type === 259 || $type === 309) {
-                        continue; /* 小程序带水印流 */
+                        continue;
                     }
-                    $desc = isset($s['streamDesc']) ? (string) $s['streamDesc'] : '';
-                    $isClean = ($type === 258 || $type === 301 || stripos($desc, 'X264_MP4') !== false);
-                    $url = isset($s['masterUrl']) ? $s['masterUrl'] : '';
-                    if ($isClean && $url !== '') {
-                        return $url;
+                    $u = isset($s['masterUrl']) ? (string) $s['masterUrl'] : '';
+                    if ($u === '') {
+                        continue;
                     }
-                }
-            }
-            /* 没找到标记为无水的流，退回第一个可用地址 */
-            foreach (array('h264', 'h265', 'av1') as $codec) {
-                if (!empty($streams[$codec][0]['masterUrl'])) {
-                    return $streams[$codec][0]['masterUrl'];
+                    $w = isset($s['width']) ? (int) $s['width'] : 0;
+                    $h = isset($s['height']) ? (int) $s['height'] : 0;
+                    /* 竖屏视频取短边，720x1280 习惯上叫 720P */
+                    $short = ($w > 0 && $h > 0) ? min($w, $h) : $h;
+                    $out[] = array(
+                        'label' => $short > 0 ? $short . 'P' : strtoupper($codec),
+                        'url'   => $this->ensureHttps($u),
+                        'size'  => isset($s['size']) ? (int) $s['size'] : 0,
+                    );
                 }
             }
         }
 
-        return '';
-    }
+        if (!$out) {
+            $v2 = $this->pickStr($video, array('mediaV2'));
+            if ($v2 !== '') {
+                $mv2 = json_decode($v2, true);
+                if (!is_array($mv2)) {
+                    $mv2 = json_decode(preg_replace('#\bundefined\b#', 'null', $v2), true);
+                }
+                if (is_array($mv2)) {
+                    $found = $this->searchStream($mv2);
+                    if ($found !== '') {
+                        $out[] = array('label' => '播放流', 'url' => $this->ensureHttps($found), 'size' => 0);
+                    }
+                }
+            }
+        }
 
+        /* 去重，保持原画在前的顺序 */
+        $seen = array();
+        $uniq = array();
+        foreach ($out as $q) {
+            if (isset($seen[$q['url']])) {
+                continue;
+            }
+            $seen[$q['url']] = 1;
+            $uniq[] = $q;
+        }
+        return $uniq;
+    }
     /** 在 mediaV2 这类嵌套结构里递归找投屏流地址 */
     private function searchStream($arr, $depth = 0)
     {
