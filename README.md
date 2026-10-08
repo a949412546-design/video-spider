@@ -15,6 +15,7 @@
 | `public/dl.php` | 下载通道，把远端视频以「附件」形式吐给浏览器，点一下就是真正的下载 |
 | `public/src/video_spider.php` | 原项目的解析逻辑（已修复若干 PHP 8 崩溃问题） |
 | `public/src/douyin.php` | 抖音解析，走移动端 Feed 通道（原项目的抖音解析已失效，这里是重写的） |
+| `public/src/xiaohongshu.php` | 小红书解析，走分享页 SSR（原项目不支持小红书） |
 | `public/config.php` | 可选配置：接入第三方解析源 |
 | `public/src/util.php` | 下载地址签名、文件名处理 |
 | `Dockerfile` / `docker/` | 容器化部署，适配 Render 等平台 |
@@ -122,6 +123,7 @@ git push -u origin main
 | 平台 | 状态 |
 | --- | --- |
 | 抖音 | ✅ 实测可用（含图集） |
+| 小红书 | ⚠️ 逻辑已就绪，服务器 IP 可能触发风控，见下 |
 | AcFun | ✅ 实测可用 |
 | 梨视频 | ✅ 实测可用 |
 | 其他平台 | ⚠️ 未逐一实测 |
@@ -137,6 +139,23 @@ git push -u origin main
 
 ---
 
-## 七、免责声明
+## 七、关于小红书
+
+小红书用的是 Nuxt/Vue 服务端渲染，笔记详情、高清媒体流、作者信息都内嵌在页面 HTML 的 `window.__INITIAL_STATE__` 里，所以不需要签名算法就能解析。但有两个绕不开的点：
+
+1. **必须保留分享链接里的 `xsec_token` 等参数。** 只拿笔记 ID 去拼地址，服务端会直接返回 404 或拦截。所以页面上一定要用 App 里「分享 → 复制链接」得到的完整内容，不要只复制笔记地址。
+2. **服务器 IP 会被风控。** 小红书对机房 IP 的匿名抓取很敏感，容易 302 跳到登录页。如果遇到「风险访问」的提示，在 `public/config.php` 里配置 Cookie 即可，拿法：
+
+   - 浏览器打开 xiaohongshu.com 并登录（不登录也行）
+   - 按 F12 打开开发者工具 → Network → 刷新页面 → 点任意一个请求
+   - 在 Request Headers 里找到 `Cookie:`，复制整行值
+   - 填到 `config.php` 的 `'xiaohongshu' => array('cookie' => '粘贴到这里')`
+
+   只需要 `a1` 和 `webId` 这两个访客凭据就够了，不一定要登录态的 `web_session`。访客凭据不含账号身份，比登录 Cookie 安全。
+
+解析出来的视频优先取作者原始上传的原画（`consumer.originVideoKey`），其次取 `mediaV2` 投屏流，最后才从码率列表里挑。码率列表里 `streamType` 为 259 / 309 的是小程序带水印版本，代码里已经排除。
+---
+
+## 八、免责声明
 
 本项目仅供个人学习与技术研究使用。请勿用于商业用途，下载的视频版权归原作者所有，请尊重创作者权益。
