@@ -24,6 +24,13 @@
 
 return array(
 
+    /* 小红书：服务器 IP 被风控拦成登录页时，填上 Cookie 能显著提高成功率 */
+    'xiaohongshu' => array(
+        // 从浏览器开发者工具里复制，形如 "a1=xxx; webId=xxx; web_session=xxx"
+        // 只填 a1 和 webId 也能用，属于访客凭据，比登录态安全
+        'cookie' => '',
+    ),
+
     'douyin' => array(
         // 用 {url} 占位符表示需要被解析的链接，会自动做 URL 编码
         'endpoint' => '',

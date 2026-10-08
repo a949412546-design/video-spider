@@ -21,6 +21,12 @@ if ((isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET') ===
 require __DIR__ . '/src/video_spider.php';
 require __DIR__ . '/src/util.php';
 
+/* 可选配置：第三方解析源、小红书 Cookie 等 */
+$vsConfig = @include __DIR__ . '/config.php';
+if (!is_array($vsConfig)) {
+    $vsConfig = array();
+}
+
 use Video_spider\Video;
 
 function respond($payload)
@@ -97,6 +103,8 @@ if (preg_match('#https?://[^\s<>\'"，。、）)】\]]+#iu', $input, $m)) {
 $routes = array(
     array('pipix', 'pipixia', 'url'),
     array('douyin', 'douyin', 'url'),
+    array('xiaohongshu.com', 'xiaohongshu', 'url'),
+    array('xhslink.com', 'xiaohongshu', 'url'),
     array('huoshan', 'huoshan', 'url'),
     array('h5.weishi', 'weishi', 'url'),
     array('isee.weishi', 'weishi', 'id'),
@@ -137,13 +145,21 @@ foreach ($routes as $route) {
 }
 
 if ($method === null) {
-    fail('暂不支持这个平台的链接。目前支持抖音、快手、微博、西瓜、皮皮虾、微视、最右、虎牙、美拍等 20+ 平台，暂不支持小红书');
+    fail('暂不支持这个平台的链接。目前支持抖音、小红书、快手、微博、西瓜、皮皮虾、微视、最右、虎牙、美拍等 20+ 平台');
 }
 
 if ($method === 'douyin') {
     /* 抖音走移动端 Feed 通道，见 src/douyin.php */
     require_once __DIR__ . '/src/douyin.php';
     $spider = new DouyinSpider();
+    $result = $spider->parse($url);
+} elseif ($method === 'xiaohongshu') {
+    /* 小红书走分享页 SSR，见 src/xiaohongshu.php */
+    require_once __DIR__ . '/src/xiaohongshu.php';
+    $spider = new XiaohongshuSpider();
+    if (!empty($vsConfig['xiaohongshu']['cookie'])) {
+        $spider->setCookie($vsConfig['xiaohongshu']['cookie']);
+    }
     $result = $spider->parse($url);
 } else {
     $api = new Video();
