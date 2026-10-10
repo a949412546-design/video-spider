@@ -107,6 +107,8 @@ textarea:focus{
 }
 .btn.dl:active{box-shadow:0 8px 18px -14px rgba(34,197,94,.9)}
 .btn.busy{opacity:.75;pointer-events:none}
+/* 下载按钮是 <a> 标签，要自己把文字居中并去掉下划线 */
+a.btn{display:flex;align-items:center;justify-content:center;text-decoration:none;text-align:center}
 
 .paste-tip{
   margin:10px 2px 0;font-size:12px;line-height:1.55;color:var(--tx3);
@@ -181,6 +183,7 @@ textarea:focus{
   content:"";position:absolute;inset:auto 0 0 0;height:38%;pointer-events:none;
   background:linear-gradient(180deg,transparent,rgba(0,0,0,.55));
 }
+.gimg{display:block;text-decoration:none}
 .gitem img{width:100%;display:block;aspect-ratio:3/4;object-fit:cover;transition:transform .35s}
 .gitem:active img{transform:scale(1.03)}
 .gbtn{
@@ -189,6 +192,7 @@ textarea:focus{
   background:linear-gradient(135deg,#22c55e,#12a150);cursor:pointer;
   box-shadow:0 6px 16px -6px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.25);
 }
+.gbtn{display:inline-block;text-decoration:none;line-height:1.25}
 .gbtn:active{transform:scale(.94)}
 
 /* ---------- 提示 / 报错 ---------- */
@@ -375,8 +379,9 @@ footer .sep{color:#333b47;margin:0 5px}
     anchorDownload(url, filename);
     if (isWX) {
       toast('已开始下载，按提示保存');
-    } else if (!isIOS) {
-      toast('已开始下载');
+    } else {
+      /* iOS 以前这里什么都不提示，看着就像按了没反应 */
+      toast('已开始下载，可在「文件」里找到');
     }
   }
 
@@ -435,9 +440,20 @@ footer .sep{color:#333b47;margin:0 5px}
     if (isAlbum) {
       html += '<div class="gallery">';
       for (var i = 0; i < images.length; i++) {
+        var oneDl = dlImgs[i] || '';
         html += '<div class="gitem">' +
-          '<img src="' + esc(images[i]) + '" referrerpolicy="no-referrer" alt="" loading="lazy">' +
-          '<button class="gbtn" data-i="' + i + '">保存</button></div>';
+          /* 点图片可以放大：万一设备不让直接下载，长按这里就能存进相册 */
+          '<a class="gimg" href="' + esc(images[i]) + '" target="_blank" rel="noopener">' +
+            '<img src="' + esc(images[i]) + '" referrerpolicy="no-referrer" alt="" loading="lazy">' +
+          '</a>' +
+          /*
+           * 必须用真正的 <a download>，不能让脚本去模拟点击。
+           * 合成点击不带用户操作标记，iOS 会直接忽略，表现就是「点了没反应」。
+           */
+          (oneDl
+            ? '<a class="gbtn" href="' + esc(oneDl) + '" download="' + esc(baseName + '-' + (i + 1) + '.jpg') + '">保存</a>'
+            : '<a class="gbtn" href="' + esc(images[i]) + '" target="_blank" rel="noopener">查看</a>') +
+        '</div>';
       }
       html += '</div>';
       html += '<div class="acts"><button class="btn dl" id="dlAllBtn">⬇️ 下载全部 ' + images.length + ' 张图</button></div>';
@@ -457,7 +473,7 @@ footer .sep{color:#333b47;margin:0 5px}
         }
         html += '</div>';
       }
-      html += '<div class="acts"><button class="btn dl" id="dlBtn">⬇️ 下载视频</button></div>';
+      html += '<div class="acts"><a class="btn dl" id="dlBtn" href="' + esc(quals.length ? (quals[0].download || dl) : dl) + '" download="' + esc(fname) + '">⬇️ 下载视频</a></div>';
       html += '<div class="acts">' +
         '<button class="btn" id="openBtn">在线预览</button>' +
         (rawTitle ? '<button class="btn" id="copyTextBtn">复制文案</button>' : '') +
@@ -490,12 +506,7 @@ footer .sep{color:#333b47;margin:0 5px}
     }
 
     if (isAlbum) {
-      Array.prototype.forEach.call(resultBox.querySelectorAll('.gbtn'), function (b) {
-        b.addEventListener('click', function () {
-          var idx = parseInt(b.getAttribute('data-i'), 10);
-          saveFile(dlImgs[idx] || images[idx], baseName + '-' + (idx + 1) + '.jpg', b);
-        });
-      });
+      /* 图集的「保存」是真正的下载链接，交给浏览器原生处理，这里不再介入 */
       var all = document.getElementById('dlAllBtn');
       if (all) {
         all.addEventListener('click', function () {
@@ -518,14 +529,19 @@ footer .sep{color:#333b47;margin:0 5px}
             });
             /* 预览也跟着切，避免「选的」和「看的」不一致 */
             if (player && quals[curQ].url) { player.src = quals[curQ].url; }
+            var dlEl = document.getElementById('dlBtn');
+            if (dlEl && quals[curQ].download) { dlEl.setAttribute('href', quals[curQ].download); }
           });
         });
       }
       var pickDl = function () { return quals.length ? (quals[curQ].download || dl) : dl; };
       var pickRaw = function () { return quals.length ? (quals[curQ].url || video) : video; };
 
-      document.getElementById('dlBtn').addEventListener('click', function () {
-        var target = pickDl();
+      document.getElementById('dlBtn').addEventListener('click', function (e) {
+        /* 桌面 Chromium 才有「另存为」对话框；移动端不要拦，交给原生下载 */
+        if (!canPickFile) { return; }
+        e.preventDefault();
+        var target = this.getAttribute('href');
         if (!target) { window.open(pickRaw(), '_blank'); return; }
         saveFile(target, fname, this);
       });
