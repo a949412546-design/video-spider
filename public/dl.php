@@ -23,6 +23,13 @@ function bail($code, $msg)
     exit;
 }
 
+/**
+ * 用 HEAD 探测源站。
+ *
+ * 注意：一旦开 CURLOPT_NOBODY，curl_getinfo 的长度字段恒为 -1，
+ * 必须自己从响应头里解析 Content-Length，否则拿不到文件大小，
+ * 下游（尤其是微信）会显示「文件大小 0B」。
+ */
 function vs_probe_head($url, $UA, $referer)
 {
     $ch = curl_init($url);
@@ -36,18 +43,30 @@ function vs_probe_head($url, $UA, $referer)
         CURLOPT_TIMEOUT        => 30,
         CURLOPT_USERAGENT      => $UA,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HEADER         => true,
     );
     if ($referer !== '') {
         $opts[CURLOPT_REFERER] = $referer;
     }
     curl_setopt_array($ch, $opts);
-    curl_exec($ch);
+    $resp = curl_exec($ch);
     $info = curl_getinfo($ch);
     curl_close($ch);
+
+    $info['content_length'] = 0;
+    if (is_string($resp) && !empty($info['header_size'])) {
+        $raw = substr($resp, 0, $info['header_size']);
+        if (preg_match_all('#^Content-Length:\s*(\d+)#im', $raw, $m) && !empty($m[1])) {
+            $info['content_length'] = (int) end($m[1]);
+        }
+        if (empty($info['content_type']) && preg_match_all('#^Content-Type:\s*([^\s;]+)#im', $raw, $m2) && !empty($m2[1])) {
+            $info['content_type'] = end($m2[1]);
+        }
+    }
     return $info;
 }
 
-/** 部分源站不支持 HEAD，用 1KB 范围请求兜底 */
+/** 部分源站不支持 HEAD，用 1KB 范围请求兜底，从 Content-Range 里读总长度 */
 function vs_probe_range($url, $UA, $referer)
 {
     $ch = curl_init($url);
@@ -71,15 +90,16 @@ function vs_probe_range($url, $UA, $referer)
     $info = curl_getinfo($ch);
     curl_close($ch);
 
+    $info['content_length'] = 0;
     if (is_string($resp) && !empty($info['header_size'])) {
         $raw = substr($resp, 0, $info['header_size']);
-        if (preg_match('#Content-Range:\s*bytes\s+\d+-\d+/(\d+)#i', $raw, $m)) {
-            $info['content_length_download'] = (int) $m[1];
-        } elseif (preg_match('#Content-Length:\s*(\d+)#i', $raw, $m)) {
-            $info['content_length_download'] = (int) $m[1];
+        if (preg_match_all('#Content-Range:\s*bytes\s+\d+-\d+/(\d+)#i', $raw, $m) && !empty($m[1])) {
+            $info['content_length'] = (int) end($m[1]);
+        } elseif (preg_match_all('#^Content-Length:\s*(\d+)#im', $raw, $m2) && !empty($m2[1])) {
+            $info['content_length'] = (int) end($m2[1]);
         }
-        if (preg_match('#Content-Type:\s*([^\s;]+)#i', $raw, $m)) {
-            $info['content_type'] = $m[1];
+        if (empty($info['content_type']) && preg_match_all('#^Content-Type:\s*([^\s;]+)#im', $raw, $m3) && !empty($m3[1])) {
+            $info['content_type'] = end($m3[1]);
         }
     }
     return $info;
@@ -130,17 +150,17 @@ if (strpos($host, 'douyin') !== false || strpos($host, 'iesdouyin') !== false ||
     $referer = 'https://www.ixigua.com/';
 }
 
-/* ---- 先探测，确认源站可用并拿到大小，避免给出空文件 ---- */
+/* ---- 先探测，确认源站可用并拿到真实大小 ---- */
 $info = vs_probe_head($url, $UA, $referer);
 $code = (int) $info['http_code'];
 $type = (string) $info['content_type'];
-$len  = (int) $info['content_length_download'];
+$len  = (int) $info['content_length'];
 
-if ($code === 0 || $code >= 400) {
+if ($code === 0 || $code >= 400 || $len <= 0) {
     $info = vs_probe_range($url, $UA, $referer);
     $code = (int) $info['http_code'];
     $type = (string) $info['content_type'];
-    $len  = (int) $info['content_length_download'];
+    $len  = (int) $info['content_length'];
 }
 
 if ($code === 0) {
@@ -161,18 +181,23 @@ if ($name !== '') {
         $filename = $decoded;
     }
 }
-$filename = vs_safe_name($filename, 'video');
+$filename = str_replace(array("\r", "\n", "\t"), ' ', (string) $filename);
 
-$isImage = ($type !== '' && stripos($type, 'image/') === 0)
-    || preg_match('#\.(jpg|jpeg|png|webp)$#i', $filename);
+/*
+ * 判断类型必须在截断之前做。
+ * 文件名清洗会把长标题截到 50 字，扩展名会被一起截掉，
+ * 那样就会把 jpg 当成 mp4，微信打开就是坏的。
+ */
+$isImage = preg_match('#\.(jpg|jpeg|png|webp)$#i', $filename)
+    || ($type !== '' && stripos($type, 'image/') === 0);
 
-/* 部分平台返回的是 HLS 播放列表而不是 mp4，按真实格式命名 */
 $isStream = stripos((string) $type, 'mpegurl') !== false
     || preg_match('#\.m3u8#i', $url);
 
-if (!preg_match('#\.(mp4|mov|m4v|jpg|jpeg|png|webp|m3u8)$#i', $filename)) {
-    $filename .= $isImage ? '.jpg' : ($isStream ? '.m3u8' : '.mp4');
-}
+/* 去掉原扩展名后再清洗，最后补上正确的扩展名 */
+$ext  = $isImage ? '.jpg' : ($isStream ? '.m3u8' : '.mp4');
+$base = preg_replace('#\.(mp4|mov|m4v|jpg|jpeg|png|webp|m3u8)$#i', '', $filename);
+$filename = vs_safe_name($base, 'video') . $ext;
 
 if ($type !== '' && preg_match('#^(video/|image/)#i', $type)) {
     $outType = $type;
@@ -180,11 +205,42 @@ if ($type !== '' && preg_match('#^(video/|image/)#i', $type)) {
     $outType = $isImage ? 'image/jpeg' : ($isStream ? 'application/vnd.apple.mpegurl' : 'video/mp4');
 }
 
-/* 兼容老浏览器的 ASCII 回退名 */
 $asciiName = preg_replace('#[^\x20-\x7E]#', '_', $filename);
 $asciiName = str_replace(array('"', '\\'), '_', $asciiName);
 if (trim($asciiName, '_ .') === '') {
     $asciiName = $isImage ? 'cover.jpg' : 'video.mp4';
+}
+
+/*
+ * ---- 解析客户端要的文件区间 ----
+ * 手机上的下载器（微信、各类浏览器）普遍会先用 Range 探一下，
+ * 拿不到 206 就容易判断成「文件大小 0B」。所以这里把 Range 透传给源站。
+ */
+$start = 0;
+$end   = ($len > 0) ? $len - 1 : 0;
+$partial = false;
+
+if ($len > 0 && !empty($_SERVER['HTTP_RANGE'])
+    && preg_match('#bytes=(\d*)-(\d*)#i', (string) $_SERVER['HTTP_RANGE'], $rm)) {
+    $from = ($rm[1] === '') ? -1 : (int) $rm[1];
+    $to   = ($rm[2] === '') ? -1 : (int) $rm[2];
+
+    if ($from < 0) {
+        /* bytes=-N：最后 N 字节 */
+        $n = $to > 0 ? $to : 0;
+        $start = max(0, $len - $n);
+        $end   = $len - 1;
+    } else {
+        $start = $from;
+        $end   = ($to >= 0) ? min($to, $len - 1) : $len - 1;
+    }
+
+    if ($start > $end || $start >= $len) {
+        http_response_code(416);
+        header('Content-Range: bytes */' . $len);
+        exit;
+    }
+    $partial = true;
 }
 
 header('Content-Type: ' . $outType);
@@ -192,16 +248,24 @@ header('Content-Disposition: attachment; filename="' . $asciiName . '"; filename
 header('Cache-Control: no-store');
 header('X-Accel-Buffering: no');
 header('X-Content-Type-Options: nosniff');
+header('Accept-Ranges: bytes');
+
 if ($len > 0) {
-    header('Content-Length: ' . $len);
+    if ($partial) {
+        http_response_code(206);
+        header('Content-Range: bytes ' . $start . '-' . $end . '/' . $len);
+        header('Content-Length: ' . ($end - $start + 1));
+    } else {
+        /* 一定要给出长度：否则响应会变成 chunked，微信会显示「文件大小 0B」 */
+        header('Content-Length: ' . $len);
+    }
 }
 
 /* ---- 流式转发 ---- */
 $fh = fopen('php://output', 'wb');
-$sent = 0;
 
 $ch = curl_init($url);
-curl_setopt_array($ch, array(
+$curlOpts = array(
     CURLOPT_FOLLOWLOCATION => true,
     CURLOPT_MAXREDIRS      => 5,
     CURLOPT_SSL_VERIFYPEER => false,
@@ -212,8 +276,7 @@ curl_setopt_array($ch, array(
     CURLOPT_REFERER        => $referer,
     CURLOPT_HTTPHEADER     => array('Accept: */*'),
     CURLOPT_BUFFERSIZE     => 65536,
-    CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use ($fh, &$sent) {
-        $sent += strlen($chunk);
+    CURLOPT_WRITEFUNCTION  => function ($ch, $chunk) use ($fh) {
         $n = fwrite($fh, $chunk);
         fflush($fh);
         if ($n === false || connection_aborted()) {
@@ -221,7 +284,11 @@ curl_setopt_array($ch, array(
         }
         return strlen($chunk);
     },
-));
+);
+if ($partial) {
+    $curlOpts[CURLOPT_RANGE] = $start . '-' . $end;
+}
+curl_setopt_array($ch, $curlOpts);
 curl_exec($ch);
 curl_close($ch);
 fclose($fh);
